@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ai_mediator
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d ai_mediator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# API Service
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+      args:
+        USE_UV: "true"
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/ai_mediator
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/api:/app/services/api
+    command: python -m uvicorn services.api.app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Bot Service
+  bot:
+    build:
+      context: .
+      dockerfile: services/bot/Dockerfile
+      args:
+        USE_UV: "true"
+    ports:
+      - "8001:8001"
+    environment:
+      - API_URL=http://api:8000
+    env_file:
+      - .env
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/bot:/app/services/bot
+    command: python app/main.py
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

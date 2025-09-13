@@ -1,0 +1,69 @@
+name: "Конфликт границ с родителями"
+description: "Разногласия по поводу вмешательства родителей в отношения пары"
+pair_id: "pair_test_002" 
+conflict_level: 2
+expected_theme: "family_friends"
+
+messages:
+  - message_id: "msg_010"
+    user_id: "user_sergey"
+    content: "Твоя мама опять спросила, когда мы свадьбу играть будем. И намекнула, что я должен больше зарабатывать."
+    timestamp: "2024-01-20T14:20:00Z"
+    
+  - message_id: "msg_011"
+    user_id: "user_elena"
+    content: "Серёж, она просто волнуется за нас. Не принимай близко к сердцу."
+    timestamp: "2024-01-20T14:25:00Z"
+    
+  - message_id: "msg_012"
+    user_id: "user_sergey"
+    content: "Лена, это уже третий раз за месяц! Она постоянно лезет в наши дела. Поговори с ней, пожалуйста."
+    timestamp: "2024-01-20T14:28:00Z"
+    
+  - message_id: "msg_013"
+    user_id: "user_elena"
+    content: "Я не могу запретить маме беспокоиться обо мне. И вообще, может она права насчет стабильности..."
+    timestamp: "2024-01-20T14:32:00Z"
+    
+  - message_id: "msg_014"
+    user_id: "user_sergey"
+    content: "Отлично! Значит ты на её стороне. Получается мнение мамы важнее моих чувств?"
+    timestamp: "2024-01-20T14:35:00Z"
+    
+  - message_id: "msg_015"
+    user_id: "user_elena"
+    content: "Ты неправильно понял! Просто я в сложной ситуации между вами. Не знаю что делать."
+    timestamp: "2024-01-20T14:40:00Z"
+
+context:
+  relationship_duration: "1-3_years"
+  communication_language: "ru"
+  trigger_reason: "conflict_escalation_detected"
+
+expected_output:
+  conflict_level: 2
+  analysis:
+    conflict_theme: "family_friends"
+    emotional_state:
+      tension_level: "medium"
+      dominant_emotions: ["frustration", "confusion", "hurt"]
+    communication_pattern: "escalating_conflict"
+    
+  participants:
+    user_sergey:
+      should_include:
+        - "понимание дискомфорта от вмешательства"
+        - "объяснение сложности позиции партнерши"
+        - "советы по установлению границ"
+      should_avoid:
+        - "критика семьи партнерши"
+        - "ультиматумы"
+        
+    user_elena:
+      should_include:
+        - "понимание сложности позиции между близкими"
+        - "объяснение потребности партнера в поддержке"
+        - "советы по балансу интересов"
+      should_avoid:
+        - "игнорирование чувств партнера"
+        - "полная поддержка вмешательства родителей"

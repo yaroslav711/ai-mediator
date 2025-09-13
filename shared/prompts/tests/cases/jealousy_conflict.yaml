@@ -1,0 +1,69 @@
+name: "Конфликт из-за ревности"
+description: "Пара ссорится из-за того, что один партнер ревнует к коллегам другого"
+pair_id: "pair_test_001"
+conflict_level: 2
+expected_theme: "jealousy"
+
+messages:
+  - message_id: "msg_001"
+    user_id: "user_anna"
+    content: "Мне не нравится, что ты постоянно переписываешься с этой Викой из работы. Даже вечером она тебе пишет!"
+    timestamp: "2024-01-15T19:30:00Z"
+    
+  - message_id: "msg_002" 
+    user_id: "user_dmitry"
+    content: "Это рабочие вопросы! Мы готовим презентацию. Ты ревнуешь без повода."
+    timestamp: "2024-01-15T19:32:00Z"
+    
+  - message_id: "msg_003"
+    user_id: "user_anna" 
+    content: "Без повода?! В субботу в 11 вечера какие рабочие вопросы? Ты меня за дурочку держишь?"
+    timestamp: "2024-01-15T19:35:00Z"
+    
+  - message_id: "msg_004"
+    user_id: "user_dmitry"
+    content: "Аня, ну хватит! Ты сама знаешь, что у нас дедлайн в понедельник. Я не могу контролировать когда люди пишут."
+    timestamp: "2024-01-15T19:37:00Z"
+    
+  - message_id: "msg_005"
+    user_id: "user_anna"
+    content: "Да ладно! Можешь же не отвечать сразу. Или скажи ей, что вечером ты не работаешь. Но тебе нравится с ней общаться!"
+    timestamp: "2024-01-15T19:40:00Z"
+    
+  - message_id: "msg_006"
+    user_id: "user_dmitry"
+    content: "Знаешь что, я устал от твоих подозрений. Если не доверяешь - твои проблемы."
+    timestamp: "2024-01-15T19:45:00Z"
+
+context:
+  relationship_duration: "1-3_years"
+  communication_language: "ru"
+  trigger_reason: "conflict_escalation_detected"
+
+expected_output:
+  conflict_level: 2
+  analysis:
+    conflict_theme: "jealousy"
+    emotional_state:
+      tension_level: "medium"
+      dominant_emotions: ["frustration", "hurt", "anger"]
+    communication_pattern: "escalating_conflict"
+    
+  participants:
+    user_anna:
+      should_include:
+        - "понимание чувства незащищенности"
+        - "объяснение возможных мотивов партнера"
+        - "рекомендации по выражению потребностей"
+      should_avoid:
+        - "обвинения партнера"
+        - "поддержка ревности"
+        
+    user_dmitry:
+      should_include:
+        - "понимание важности работы"
+        - "объяснение чувств партнерши"
+        - "рекомендации по установлению границ"
+      should_avoid:
+        - "игнорирование чувств партнерши"
+        - "обвинения в контроле"
