@@ -23,35 +23,26 @@ install-pip: ## Install with pip (fallback)
 
 # Testing
 test: ## Run all tests
-	python -m pytest services/api/tests/ services/bot/tests/ tests/
+	python -m pytest tests/
 
 test-unit: ## Run unit tests only
-	python -m pytest services/api/tests/ services/bot/tests/
+	python -m pytest tests/
 
-test-integration: ## Run integration tests only  
+test-integration: ## Run integration tests only
 	python -m pytest tests/integration/
 
 test-e2e: ## Run end-to-end tests
 	python -m pytest tests/e2e/
 
-test-api: ## Run API tests only
-	python -m pytest services/api/tests/
-
-test-bot: ## Run bot tests only
-	python -m pytest services/bot/tests/
+test-prompts: ## Run prompt tests only
+	python -m pytest shared/prompts/tests/
 
 # Code quality
 lint: ## Run linting
-	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff check services/api/ services/bot/ shared/ tools/
+	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff check internal/ shared/ tools/ main/
 
-format: ## Format code  
-	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff format services/api/ services/bot/ shared/ tools/
-
-lint-api: ## Run linting for API only
-	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff check services/api/
-
-lint-bot: ## Run linting for Bot only
-	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff check services/bot/
+format: ## Format code
+	export PATH="/Users/$(USER)/.local/bin:$$PATH" && uv run ruff format internal/ shared/ tools/ main/
 
 # Database
 db-upgrade: ## Apply database migrations

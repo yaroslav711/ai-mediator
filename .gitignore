@@ -89,3 +89,7 @@ models/
 # Shared prompts results
 shared/prompts/tests/results/*
 !shared/prompts/tests/results/.gitkeep
+.claude
+.idea
+venv
+CLAUDE.md
