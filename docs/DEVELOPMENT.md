@@ -2,297 +2,243 @@
 
 ## Быстрый старт
 
-### 1. Клонирование и настройка
+### 1. Клонирование репозитория
 ```bash
 git clone <repository-url>
 cd ai-mediator
-make setup-dev
 ```
 
-### 2. Настройка переменных окружения
+### 2. Настройка окружения
+
+**Выберите способ установки:**
+
+#### Простой способ (быстрый старт)
 ```bash
-cp .env.example .env
-# Отредактируйте .env файл с вашими ключами
+make setup
 ```
 
-### 3. Запуск в development режиме
+#### Разработческий режим (с дополнительными инструментами)
 ```bash
-make docker-up
+make dev-install
 ```
 
-Сервисы будут доступны:
-- API: http://localhost:8000
-- Bot: запущен и слушает Telegram webhook
-- PostgreSQL: localhost:5432
-- Redis: localhost:6379
-
-## Структура разработки
-
-### Сервис API (`services/api/`)
+### 3. Настройка переменных окружения
 ```bash
-# Установка зависимостей
-cd services/api
-pip install -e ".[dev]"
-
-# Запуск в dev режиме
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Тесты
-pytest
-
-# Линтинг
-ruff check .
-ruff format .
+# Файл .env создается автоматически из .env.example
+# Отредактируйте его с вашими токенами:
+nano .env
 ```
 
-### Сервис Bot (`services/bot/`)
+**Обязательные переменные:**
+- `TELEGRAM_BOT_TOKEN` - получить у [@BotFather](https://t.me/BotFather)
+- `TELEGRAM_BOT_USERNAME` - имя вашего бота
+- `OPENAI_API_KEY` - получить на [platform.openai.com](https://platform.openai.com/)
+- `DATABASE_URL` - по умолчанию использует SQLite
+- `LOG_LEVEL` - уровень логирования (INFO, DEBUG, ERROR)
+
+### 4. Запуск приложения
+
 ```bash
-# Установка зависимостей
-cd services/bot
-pip install -e ".[dev]"
+# Запуск бота
+make start
 
-# Запуск в dev режиме
-python app/main.py
-
-# Тесты
-pytest
+# Проверка конфигурации
+make check-env
 ```
 
-### Работа с промптами
+
+## Разработка
+
+### Основные команды
+
 ```bash
-# Тестирование промптов (без запуска сервисов)
-python tools/prompt_tester.py --all
+# Установка и настройка
+make install              # Установка зависимостей
+make dev-install         # Установка с dev-зависимостями
+make setup               # Полная настройка
 
-# Интерактивная песочница
-python tools/prompt_playground.py
+# Запуск и проверка
+make start               # Запуск бота
+make check-env          # Проверка конфигурации
 
-# Создание нового тестового кейса
-cp shared/prompts/tests/cases/template.yaml shared/prompts/tests/cases/new_case.yaml
+# Очистка
+make clean              # Очистить временные файлы
+make clean-venv         # Удалить виртуальное окружение
+make reset              # Полный сброс
+
+# Справка
+make help               # Показать все доступные команды
 ```
 
-## База данных
+### Структура кода
 
-### Миграции
-```bash
-# Создание новой миграции
-make db-migration message="Add new table"
-
-# Применение миграций
-make db-upgrade
-
-# Откат миграции
-make db-downgrade
+#### Точка входа (`src/main.py`)
+```python
+# Основная точка входа для Telegram бота
+# Инициализирует все компоненты и запускает бота
 ```
 
-### Тестовые данные
-```bash
-# Заполнение тестовыми данными
-make seed-data
+#### Конфигурация (`src/config/`)
+```python
+# settings.py - загрузка настроек из переменных окружения
+# Использует pydantic-settings для типизированной конфигурации
 ```
 
-## Тестирование
-
-### Запуск всех тестов
-```bash
-make test
+#### Доменный слой (`src/domain/`)
+```python
+# entities.py - основные бизнес-сущности:
+# - DialogSession - сессия медиации между двумя пользователями
+# - Message - сообщение в диалоге
+# - User - пользователь системы
 ```
 
-### Тестирование отдельных сервисов
-```bash
-make test-api    # Только API тесты
-make test-bot    # Только Bot тесты
+#### Сервисный слой (`src/service/`)
+```python
+# session_service.py - основная бизнес-логика:
+# - Создание сессий медиации
+# - Управление приглашениями
+# - Обработка сообщений
 ```
 
-### Тестирование промптов
-```bash
-# Все тесты промптов
-make prompt-test
-
-# Конкретный тест
-python tools/prompt_tester.py --test-case jealousy_conflict
-
-# Интерактивное тестирование
-python tools/prompt_playground.py
+#### Репозиторий (`src/repository/`)
+```python
+# interface.py - определяет контракты для работы с данными
+# mock_repository.py - временная реализация в памяти для разработки
 ```
 
-## Линтинг и форматирование
+#### Транспорт (`src/transport/telegram/`)
+```python
+# handlers.py - обработчики Telegram команд:
+# - /start - создание новой сессии
+# - /invite - генерация ссылки-приглашения
+# - Обработка текстовых сообщений
+```
 
+### Принципы разработки
+
+1. **Clean Architecture** - четкое разделение ответственностей между слоями
+2. **Dependency Injection** - зависимости передаются через интерфейсы
+3. **Single Responsibility** - каждый модуль решает одну задачу
+4. **Типизация** - используем type hints везде
+5. **Async/await** - асинхронная обработка для производительности
+
+### Добавление нового функционала
+
+#### Новая команда бота
+1. Добавьте обработчик в `src/transport/telegram/handlers.py`
+2. Если нужна бизнес-логика, добавьте методы в соответствующий сервис
+3. Для работы с данными используйте репозитории
+
+#### Новая бизнес-сущность
+1. Добавьте класс в `src/domain/entities.py`
+2. Создайте интерфейс репозитория в `src/repository/interface.py`
+3. Реализуйте заглушку в `src/repository/mock_repository.py`
+
+#### Новый внешний сервис
+1. Создайте модуль в `src/external_services/`
+2. Определите интерфейс для внедрения зависимостей
+3. Добавьте конфигурацию в `src/config/settings.py`
+
+### Отладка
+
+#### Локальная разработка
 ```bash
-# Проверка кода
-make lint
+# Запуск с подробными логами
+LOG_LEVEL=DEBUG make start
 
-# Форматирование
-make format
+# Проверка импортов
+python -c "from src.main import main; print('OK')"
 
-# Pre-commit хуки
-pre-commit install
-pre-commit run --all-files
+# Тестирование конфигурации
+make check-env
+```
+
+#### Логирование
+Все логи выводятся в структурированном формате с указанием:
+- Временной метки
+- Уровня логирования
+- Модуля
+- Сообщения
+
+#### Частые проблемы
+
+**1. Проблемы с импортами**
+```bash
+# Убедитесь, что запускаете из корня проекта
+python -m src.main
+```
+
+**2. Проблемы с зависимостями**
+```bash
+# Переустановите окружение
+make reset
+make setup
+```
+
+**3. Проблемы с токенами**
+```bash
+# Проверьте файл .env
+cat .env
+make check-env
 ```
 
 ## Docker разработка
 
-### Полная сборка
+### Локальная разработка с Docker
 ```bash
-make docker-build
-make docker-up
-```
-
-### Логи
-```bash
-make docker-logs
-```
-
-### Остановка
-```bash
-make docker-down
-```
-
-## Добавление нового функционала
-
-### 1. Новый API endpoint
-1. Создайте роутер в `services/api/app/routers/`
-2. Добавьте бизнес-логику в `services/api/app/services/`
-3. Создайте тесты в `services/api/tests/`
-4. Обновите документацию
-
-### 2. Новый handler для бота
-1. Создайте handler в `services/bot/app/handlers/`
-2. Зарегистрируйте в `services/bot/app/main.py`
-3. Создайте тесты в `services/bot/tests/`
-
-### 3. Изменение промпта
-1. Отредактируйте `shared/prompts/current/mediator_v1.md`
-2. Создайте тестовый кейс в `shared/prompts/tests/cases/`
-3. Запустите `make prompt-test`
-4. При необходимости обновите контракты в `shared/contracts/`
-
-### 4. Новая модель БД
-1. Добавьте модель в `shared/database/models.py`
-2. Создайте миграцию: `make db-migration message="Add new model"`
-3. Примените: `make db-upgrade`
-4. Обновите репозитории и сервисы
-
-## CI/CD
-
-### GitHub Actions
-- **API CI**: `.github/workflows/ci-api.yml`
-- **Bot CI**: `.github/workflows/ci-bot.yml`
-- **Shared CI**: `.github/workflows/ci-shared.yml`
-
-### Запуск локально
-```bash
-# Установка act для локального запуска GitHub Actions
-brew install act  # MacOS
-# или
-curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
-
-# Запуск CI локально
-act -j test
-```
-
-## Отладка
-
-### API отладка
-```bash
-# Логи API
-docker-compose logs -f api
-
-# Подключение к контейнеру
-docker-compose exec api bash
-
-# Отладка в IDE
-# Настройте remote debugging на localhost:5678
-```
-
-### Bot отладка
-```bash
-# Логи бота
-docker-compose logs -f bot
-
-# Тестирование webhook
-ngrok http 8001
-# Установите webhook URL в Telegram
-```
-
-### База данных
-```bash
-# Подключение к PostgreSQL
-docker-compose exec postgres psql -U user -d ai_mediator
-
-# GUI клиент
-# pgAdmin: http://localhost:5050
-```
-
-## Полезные команды
-
-```bash
-# Очистка
-make clean
-
-# Полная перезагрузка
-make docker-down
-make clean
+# Сборка и запуск
 make docker-build
 make docker-up
 
-# Просмотр логов в реальном времени
+# Логи
 make docker-logs
 
-# Проверка состояния сервисов
-docker-compose ps
-
-# Мониторинг ресурсов
-docker stats
+# Остановка
+make docker-down
 ```
 
-## Troubleshooting
+## Тестирование
 
-### Проблемы с Docker
+В настоящее время тестирование находится в стадии настройки. Планируется:
+
+- Unit тесты для сервисов
+- Интеграционные тесты для репозиториев  
+- E2E тесты для Telegram handlers
+
+## Workflow
+
+### Создание новой фичи
 ```bash
-# Пересборка без кэша
-docker-compose build --no-cache
+# 1. Создайте ветку
+git checkout -b feature/новая-фича
 
-# Очистка Docker
-docker system prune -a
+# 2. Разработка
+make dev-install
+make start
+
+# 3. Тестирование (когда будет готово)
+make test
+make lint
+
+# 4. Коммит и push
+git add .
+git commit -m "feat: добавил новую фичу"
+git push origin feature/новая-фича
 ```
 
-### Проблемы с БД
-```bash
-# Сброс БД
-docker-compose down -v
-docker-compose up postgres -d
-make db-upgrade
-make seed-data
+### Стандарты коммитов
+```
+feat: новая функциональность
+fix: исправление бага
+docs: обновление документации
+refactor: рефакторинг без изменения функциональности
+test: добавление или обновление тестов
 ```
 
-### Проблемы с промптами
-```bash
-# Проверка API ключа
-python -c "import openai; print(openai.api_key)"
+## Производственное развертывание
 
-# Тест подключения
-python tools/prompt_playground.py
-```
-
-## Стандарты кода
-
-### Python
-- Следуем PEP 8
-- Используем type hints
-- Docstrings в формате Google
-- Coverage > 80%
-
-### Коммиты
-```
-feat: добавить новый endpoint для медиации
-fix: исправить обработку ошибок в боте
-docs: обновить API документацию
-test: добавить тесты для промптов
-refactor: вынести общую логику в shared
-```
-
-### Branching
-- `main` - стабильная версия
-- `develop` - разработка
-- `feature/название` - новые фичи
-- `hotfix/название` - критические исправления
+Планируется добавить инструкции по:
+- Развертыванию в production
+- CI/CD пайплайнам
+- Мониторингу и логированию
+- Резервному копированию данных

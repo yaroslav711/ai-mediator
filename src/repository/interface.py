@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 from datetime import datetime
 
-from internal.domain.entities import DialogSession, Participant, InviteLink, SessionMessage, SessionStatus
+from ..domain.entities import DialogSession, Participant, InviteLink, SessionMessage, SessionStatus
 
 
 class SessionRepositoryInterface(ABC):
