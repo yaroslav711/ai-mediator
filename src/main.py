@@ -2,10 +2,10 @@
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from internal.config.settings import get_settings
-from internal.transport.telegram.handlers import TelegramHandlers
-from internal.service.session_service import SessionService
-from internal.repository.mock_repository import MockSessionRepository
+from .config.settings import get_settings
+from .transport.telegram.handlers import TelegramHandlers
+from .service.session_service import SessionService
+from .repository.mock_repository import MockSessionRepository
 
 # Configure logging
 logging.basicConfig(
