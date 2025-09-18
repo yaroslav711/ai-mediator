@@ -19,6 +19,7 @@ class MockSessionRepository(SessionRepositoryInterface):
         # Indexes for efficient lookups
         self.user_sessions: Dict[int, str] = {}  # telegram_user_id -> session_id
         self.session_participants: Dict[str, List[str]] = {}  # session_id -> [participant_ids]
+        self.session_messages: Dict[str, List[str]] = {}  # session_id -> [message_ids]
     
     async def save_session(self, session: DialogSession) -> None:
         """Save session to memory."""
@@ -101,3 +102,46 @@ class MockSessionRepository(SessionRepositoryInterface):
             session.status = status
             session.updated_at = datetime.utcnow()
             print(f"✅ Mock: Updated session {session_id[:8]}... status={status.value}")
+    
+    # Message-related methods implementation
+    async def save_message(self, message: SessionMessage) -> bool:
+        """Save message to memory."""
+        try:
+            self.messages[message.message_id] = message
+            
+            # Update session messages index
+            if message.session_id not in self.session_messages:
+                self.session_messages[message.session_id] = []
+            self.session_messages[message.session_id].append(message.message_id)
+            
+            print(f"✅ Mock: Saved message {message.message_id[:8]}... "
+                  f"session={message.session_id[:8]}... content='{message.content[:30]}...'")
+            return True
+        except Exception as e:
+            print(f"❌ Mock: Failed to save message: {e}")
+            return False
+    
+    async def get_session_messages(self, session_id: str) -> List[SessionMessage]:
+        """Get all messages for a session ordered by timestamp."""
+        message_ids = self.session_messages.get(session_id, [])
+        messages = []
+        
+        for message_id in message_ids:
+            message = self.messages.get(message_id)
+            if message:
+                messages.append(message)
+        
+        # Sort by timestamp
+        messages.sort(key=lambda m: m.timestamp)
+        return messages
+    
+    async def mark_message_processed(self, message_id: str) -> None:
+        """Mark message as processed by AI agent."""
+        message = self.messages.get(message_id)
+        if message:
+            message.is_processed = True
+            print(f"✅ Mock: Marked message {message_id[:8]}... as processed")
+    
+    async def get_participant_by_id(self, participant_id: str) -> Optional[Participant]:
+        """Get participant by their ID."""
+        return self.participants.get(participant_id)

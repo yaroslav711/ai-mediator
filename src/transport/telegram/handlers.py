@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from ...service.session_service import SessionService
+from ...service.message_service import MessageService
 from ...config.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -12,8 +13,14 @@ logger = logging.getLogger(__name__)
 class TelegramHandlers:
     """Main Telegram bot handlers."""
     
-    def __init__(self, session_service: SessionService, settings: Settings):
+    def __init__(
+        self, 
+        session_service: SessionService, 
+        message_service: MessageService,
+        settings: Settings
+    ):
         self.session_service = session_service
+        self.message_service = message_service
         self.bot_username = settings.telegram_bot_username
 
         # Validate bot username is set
@@ -148,6 +155,7 @@ class TelegramHandlers:
         user = update.effective_user
         user_id = user.id
         message_text = update.message.text
+        telegram_message_id = update.message.message_id
         
         logger.info(f"Received message from user {user_id}: {message_text[:50]}...")
         
@@ -162,17 +170,55 @@ class TelegramHandlers:
                 )
                 return
             
-            # TODO: Save message to session context
-            # This will be implemented when we add message storage
-            
-            await update.message.reply_text(
-                f"Сообщение получено и сохранено!\n\n"
-                f"Сессия: `{session.session_id[:8]}...`\n"
-                f"Статус: {session.status.value}\n\n"
-                f"Ваше сообщение добавлено в контекст диалога.\n"
-                f"(Функция AI анализа в разработке)",
-                parse_mode='Markdown'
+            # Get user's participant info
+            participant = await self.session_service.session_repo.get_participant_by_telegram_id(
+                session.session_id, user_id
             )
+            if not participant:
+                await update.message.reply_text(
+                    "Ошибка: не удалось найти информацию об участнике."
+                )
+                return
+            
+            # Process message through AI agent
+            agent_response = await self.message_service.process_user_message(
+                session.session_id,
+                participant.participant_id,
+                telegram_message_id,
+                message_text
+            )
+            
+            if agent_response:
+                # Send AI response to user
+                response_text = (
+                    f"🤖 **AI Медиатор:**\n{agent_response.message_to_user}\n\n"
+                    f"📊 **Анализ сессии:**\n{agent_response.session_recommendations or 'Нет дополнительных рекомендаций'}\n\n"
+                    f"📋 **Сессия:** `{session.session_id[:8]}...`"
+                )
+                
+                # Check if session should be ended
+                if agent_response.should_end_session:
+                    response_text += "\n\n⚠️ **Рекомендация:** Рассмотрите возможность завершения сессии."
+                
+                await update.message.reply_text(
+                    response_text,
+                    parse_mode='Markdown'
+                )
+                
+                # If there's a message for partner, handle it here
+                # TODO: Implement partner notification when both users are online
+                if agent_response.message_to_partner:
+                    logger.info(f"Message for partner in session {session.session_id}: {agent_response.message_to_partner}")
+                
+            else:
+                # Fallback if agent processing failed
+                await update.message.reply_text(
+                    f"Сообщение получено и сохранено!\n\n"
+                    f"Сессия: `{session.session_id[:8]}...`\n"
+                    f"Статус: {session.status.value}\n\n"
+                    f"⚠️ AI анализ временно недоступен.",
+                    parse_mode='Markdown'
+                )
             
         except Exception as e:
             logger.error(f"Error handling message: {e}")
