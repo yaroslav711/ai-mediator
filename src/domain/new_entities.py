@@ -143,9 +143,23 @@ class InviteLink:
 
 
 # ============================================================================
-# NOTES
+# LANGGRAPH STATE STRUCTURES
 # ============================================================================
 
-# Контекст для AI агента будет храниться в LangGraph State
-# Дополнительные контекстные объекты здесь не нужны
+@dataclass
+class ConversationContext:
+    """Context for LangGraph agent processing and state management."""
+    session_id: str                        # ID сессии
+    current_message: Message               # Текущее обрабатываемое сообщение
+    conversation_history: List[Message]    # История всех сообщений в сессии
+    participants_count: int = 2            # Количество участников
+    
+    # Optional LangGraph state fields
+    partnership_id: Optional[str] = None   # ID партнерства
+    conflict_type: Optional[ConflictType] = None    # Определенный тип конфликта
+    session_status: Optional[SessionStatus] = None  # Текущий статус сессии
+    
+    # AI processing state
+    agent_next_action: Optional[str] = None          # Следующее действие агента
+    awaiting_response_from: Optional[DialogRole] = None  # От кого ждем ответ
  
