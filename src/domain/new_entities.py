@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import uuid
 
 
@@ -50,17 +50,6 @@ class ConflictType(Enum):
     OTHER = "other"                         # Другое
 
 
-class MessageType(Enum):
-    """Types of messages in the dialog."""
-    USER_TEXT = "user_text"                                  # Обычное сообщение пользователя
-    USER_CONFLICT_DESCRIPTION = "user_conflict_description"  # Описание конфликта
-    AGENT_CONFLICT_QUESTION = "agent_conflict_question"      # AI выясняет суть конфликта
-    AGENT_CLARIFICATION = "agent_clarification"              # AI уточняющий вопрос
-    AGENT_COMPROMISE_PROPOSAL = "agent_compromise_proposal"  # AI предлагает компромисс
-    AGENT_SUMMARY = "agent_summary"                          # AI итоговое резюме
-    SYSTEM = "system"                                        # Системные сообщения
-
-
 class SessionStatus(Enum):
     """Enhanced session status enumeration."""
     WAITING_FOR_PARTNER = "waiting_for_partner"  # Ожидает второго участника
@@ -68,6 +57,25 @@ class SessionStatus(Enum):
     ACTIVE = "active"                            # Активная медиация
     COMPLETED = "completed"                      # Диалог завершен
     EXPIRED = "expired"                          # Сессия истекла
+
+
+class GraphPhase(Enum):
+    """LangGraph mediation phases."""
+    GATHER_USER1_PERSPECTIVE = "gather_u1"
+    GATHER_USER2_PERSPECTIVE = "gather_u2"
+    ANALYZE_CONFLICT = "analyze"
+    GENERATE_OPTIONS = "options"
+    FACILITATE_AGREEMENT = "agreement"
+    FINALIZE = "finalize"
+    DONE = "done"
+
+
+class PendingTarget(Enum):
+    """Who the graph is waiting for."""
+    USER1 = "user1"
+    USER2 = "user2"
+    BOTH = "both"
+    NONE = "none"
 
 
 # ============================================================================
@@ -118,9 +126,8 @@ class Message:
     message_id: int                        # Монотонно возрастающий ID
     session_id: str                        # К какой сессии относится
     sender_role: DialogRole                # Роль отправителя (USER_1/USER_2/AGENT)
-    telegram_message_id: Optional[int] = None # ID сообщения в Telegram (null для AGENT)
+    telegram_message_id: int               # ID сообщения в Telegram
     content: str = ""                      # Текст сообщения
-    message_type: Optional[MessageType] = None  # Тип сообщения
     timestamp: datetime = field(default_factory=datetime.utcnow) # Время отправки
 
 
@@ -141,6 +148,10 @@ class InviteLink:
 # LANGGRAPH STATE STRUCTURES
 # ============================================================================
 
+# Работа с LangGraph:
+# 1. Загрузка: context.to_dict() → передаем в LangGraph
+# 2. Сохранение: ConversationContext.from_dict(state) → восстанавливаем из LangGraph
+
 @dataclass
 class ConversationContext:
     """Context for LangGraph agent processing and state management."""
@@ -148,12 +159,40 @@ class ConversationContext:
     current_message: Message               # Текущее обрабатываемое сообщение
     conversation_history: List[Message]    # История всех сообщений в сессии
     
-    # Optional LangGraph state fields
-    partnership_id: Optional[str] = None   # ID партнерства
+    # Опциональные поля (можно добавлять по мере надобности)
     conflict_type: Optional[ConflictType] = None    # Определенный тип конфликта
     session_status: Optional[SessionStatus] = None  # Текущий статус сессии
     
-    # AI processing state
-    agent_next_action: Optional[str] = None          # Следующее действие агента
-    awaiting_response_from: Optional[DialogRole] = None  # От кого ждем ответ
+    def to_dict(self) -> Dict[str, Any]:
+        """Простая сериализация для LangGraph."""
+        from dataclasses import asdict
+        
+        result = asdict(self)
+        
+        # Конвертируем enum'ы в строки (иначе LangGraph не сможет сериализовать)
+        if self.conflict_type:
+            result['conflict_type'] = self.conflict_type.value
+        if self.session_status:
+            result['session_status'] = self.session_status.value
+            
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ConversationContext':
+        """Простая десериализация из LangGraph state."""
+        # Восстанавливаем Message объекты
+        current_message = Message(**data['current_message'])
+        conversation_history = [Message(**msg) for msg in data['conversation_history']]
+        
+        # Восстанавливаем enum'ы
+        conflict_type = ConflictType(data['conflict_type']) if data.get('conflict_type') else None
+        session_status = SessionStatus(data['session_status']) if data.get('session_status') else None
+        
+        return cls(
+            session_id=data['session_id'],
+            current_message=current_message,
+            conversation_history=conversation_history,
+            conflict_type=conflict_type,
+            session_status=session_status
+        )
  
