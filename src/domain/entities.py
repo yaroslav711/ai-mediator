@@ -20,6 +20,12 @@ class ParticipantRole(Enum):
     INVITEE = "invitee"     # Приглашенный участник
 
 
+class DialogRole(Enum):
+    """Participant role in dialog session."""
+    USER_1 = "user_1"  # Создатель сессии
+    USER_2 = "user_2"     # Приглашенный участник
+
+
 @dataclass
 class DialogSession:
     """Dialog session between two users."""
@@ -48,10 +54,20 @@ class SessionMessage:
     message_id: str
     session_id: str                          # К какой сессии относится
     participant_id: str                      # Кто отправил
+    role: DialogRole                        # Роль участника
     telegram_message_id: int                 # ID сообщения в Telegram
     content: str                            # Текст сообщения
     timestamp: datetime                     # Время отправки
     is_processed: bool = False              # Обработано ли AI медиатором
+
+
+@dataclass
+class ConversationContext:
+    """Context for agent processing."""
+    session_id: str
+    current_message: SessionMessage
+    conversation_history: List[SessionMessage]
+    participants_count: int
 
 
 @dataclass

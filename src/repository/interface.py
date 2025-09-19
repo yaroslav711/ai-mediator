@@ -44,3 +44,24 @@ class SessionRepositoryInterface(ABC):
     @abstractmethod
     async def update_session_status(self, session_id: str, status: SessionStatus) -> None:
         pass
+    
+    # Message-related methods
+    @abstractmethod
+    async def save_message(self, message: SessionMessage) -> bool:
+        """Save message to repository. Returns True if successful."""
+        pass
+    
+    @abstractmethod
+    async def get_session_messages(self, session_id: str) -> List[SessionMessage]:
+        """Get all messages for a session ordered by timestamp."""
+        pass
+    
+    @abstractmethod
+    async def mark_message_processed(self, message_id: str) -> None:
+        """Mark message as processed by AI agent."""
+        pass
+    
+    @abstractmethod
+    async def get_participant_by_id(self, participant_id: str) -> Optional[Participant]:
+        """Get participant by their ID."""
+        pass
