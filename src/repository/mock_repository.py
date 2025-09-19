@@ -1,9 +1,12 @@
 """Mock repository implementation for testing."""
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from .interface import SessionRepositoryInterface
-from ..domain.entities import DialogSession, Participant, InviteLink, SessionMessage, SessionStatus
+from repository.interface import SessionRepositoryInterface
+from domain.entities import (
+    DialogSession, Participant, InviteLink, SessionMessage, SessionStatus,
+    OutboundMessage, GraphCheckpoint, GraphPhase, PendingTarget
+)
 
 
 class MockSessionRepository(SessionRepositoryInterface):
@@ -15,16 +18,24 @@ class MockSessionRepository(SessionRepositoryInterface):
         self.participants: Dict[str, Participant] = {}
         self.invites: Dict[str, InviteLink] = {}
         self.messages: Dict[str, SessionMessage] = {}
-        
+
+        # LangGraph-specific storage
+        self.outbound_messages: Dict[str, OutboundMessage] = {}
+        self.graph_checkpoints: Dict[str, GraphCheckpoint] = {}  # thread_id -> latest checkpoint
+        self.processed_telegram_messages: set = set()  # telegram_message_ids
+        self.thread_sessions: Dict[str, str] = {}  # thread_id -> session_id
+
         # Indexes for efficient lookups
         self.user_sessions: Dict[int, str] = {}  # telegram_user_id -> session_id
         self.session_participants: Dict[str, List[str]] = {}  # session_id -> [participant_ids]
         self.session_messages: Dict[str, List[str]] = {}  # session_id -> [message_ids]
+        self.session_outbound_messages: Dict[str, List[str]] = {}  # session_id -> [outbound_message_ids]
     
     async def save_session(self, session: DialogSession) -> None:
         """Save session to memory."""
         self.sessions[session.session_id] = session
-        print(f"✅ Mock: Saved session {session.session_id[:8]}... status={session.status.value}")
+        status_value = session.status.value if session.status else "None"
+        print(f"✅ Mock: Saved session {session.session_id[:8]}... status={status_value}")
     
     async def save_participant(self, participant: Participant) -> None:
         """Save participant to memory."""
@@ -145,3 +156,93 @@ class MockSessionRepository(SessionRepositoryInterface):
     async def get_participant_by_id(self, participant_id: str) -> Optional[Participant]:
         """Get participant by their ID."""
         return self.participants.get(participant_id)
+
+    # LangGraph-specific methods implementation
+    async def update_session_graph_state(
+        self,
+        session_id: str,
+        thread_id: str,
+        phase: GraphPhase,
+        pending_for: PendingTarget,
+        version: int
+    ) -> None:
+        """Update session graph state."""
+        session = self.sessions.get(session_id)
+        if session:
+            session.thread_id = thread_id
+            session.phase = phase
+            session.pending_for = pending_for
+            session.graph_state_version = version
+            session.updated_at = datetime.utcnow()
+
+            # Update thread -> session mapping
+            self.thread_sessions[thread_id] = session_id
+
+            print(f"✅ Mock: Updated session {session_id[:8]}... graph state "
+                  f"phase={phase.value} pending_for={pending_for.value} v{version}")
+
+    async def save_graph_checkpoint(self, checkpoint: GraphCheckpoint) -> None:
+        """Save graph state checkpoint."""
+        self.graph_checkpoints[checkpoint.thread_id] = checkpoint
+        print(f"✅ Mock: Saved checkpoint {checkpoint.checkpoint_id[:8]}... "
+              f"for thread {checkpoint.thread_id[:8]}... v{checkpoint.version}")
+
+    async def get_graph_checkpoint(self, thread_id: str) -> Optional[GraphCheckpoint]:
+        """Get latest graph checkpoint for thread."""
+        checkpoint = self.graph_checkpoints.get(thread_id)
+        if checkpoint:
+            print(f"📖 Mock: Retrieved checkpoint {checkpoint.checkpoint_id[:8]}... "
+                  f"for thread {thread_id[:8]}...")
+        return checkpoint
+
+    async def save_outbound_message(self, message: OutboundMessage) -> None:
+        """Save outbound message for delivery."""
+        self.outbound_messages[message.message_id] = message
+
+        # Update session outbound messages index
+        if message.session_id not in self.session_outbound_messages:
+            self.session_outbound_messages[message.session_id] = []
+        self.session_outbound_messages[message.session_id].append(message.message_id)
+
+        print(f"✅ Mock: Saved outbound message {message.message_id[:8]}... "
+              f"target={message.target.value} content='{message.content[:30]}...'")
+
+    async def get_pending_outbound_messages(self, session_id: str) -> List[OutboundMessage]:
+        """Get undelivered outbound messages."""
+        message_ids = self.session_outbound_messages.get(session_id, [])
+        pending_messages = []
+
+        for message_id in message_ids:
+            message = self.outbound_messages.get(message_id)
+            if message and not message.delivered_at:
+                pending_messages.append(message)
+
+        # Sort by creation time
+        pending_messages.sort(key=lambda m: m.created_at)
+        return pending_messages
+
+    async def mark_outbound_delivered(self, message_id: str, telegram_message_ids: Dict[str, int]) -> None:
+        """Mark outbound message as delivered."""
+        message = self.outbound_messages.get(message_id)
+        if message:
+            message.delivered_at = datetime.utcnow()
+            message.telegram_message_ids = telegram_message_ids
+            print(f"✅ Mock: Marked outbound message {message_id[:8]}... as delivered "
+                  f"to {len(telegram_message_ids)} participants")
+
+    async def is_message_processed(self, telegram_message_id: int) -> bool:
+        """Check if telegram message was already processed (idempotency)."""
+        is_processed = telegram_message_id in self.processed_telegram_messages
+        if is_processed:
+            print(f"🔄 Mock: Telegram message {telegram_message_id} already processed")
+        else:
+            # Mark as processed
+            self.processed_telegram_messages.add(telegram_message_id)
+        return is_processed
+
+    async def get_session_by_thread_id(self, thread_id: str) -> Optional[DialogSession]:
+        """Get session by LangGraph thread ID."""
+        session_id = self.thread_sessions.get(thread_id)
+        if session_id:
+            return self.sessions.get(session_id)
+        return None

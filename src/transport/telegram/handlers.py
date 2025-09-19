@@ -1,11 +1,13 @@
 """Telegram bot handlers for AI Mediator."""
 import logging
+from typing import List
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from ...service.session_service import SessionService
-from ...service.message_service import MessageService
-from ...config.settings import Settings
+from service.session_service import SessionService
+from service.message_service import MessageService
+from config.settings import Settings
+from domain.entities import OutboundMessage, PendingTarget
 
 logger = logging.getLogger(__name__)
 
@@ -14,14 +16,16 @@ class TelegramHandlers:
     """Main Telegram bot handlers."""
     
     def __init__(
-        self, 
-        session_service: SessionService, 
+        self,
+        session_service: SessionService,
         message_service: MessageService,
-        settings: Settings
+        settings: Settings,
+        bot=None
     ):
         self.session_service = session_service
         self.message_service = message_service
         self.bot_username = settings.telegram_bot_username
+        self.bot = bot  # Store bot instance for sending messages
 
         # Validate bot username is set
         if not self.bot_username:
@@ -76,13 +80,31 @@ class TelegramHandlers:
         """Join session via invite code."""
         try:
             success = await self.session_service.join_session(invite_code, user_id, username)
-            
+
             if success:
+                # Get session to start mediation
+                session = await self.session_service.get_user_active_session(user_id)
+                if session and session.status.value == "active":
+                    # Get all participants for starting mediation
+                    participants = await self.session_service.session_repo.get_session_participants(session.session_id)
+                    participant_ids = [p.participant_id for p in participants]
+
+                    # Start mediation automatically
+                    logger.info(f"Auto-starting mediation for session {session.session_id}")
+                    result = await self.message_service.start_mediation_session(
+                        session.session_id,
+                        participant_ids
+                    )
+
+                    # Deliver initial outbound messages
+                    if result and result.outbox:
+                        await self._deliver_outbound_messages(session.session_id, result.outbox)
+
                 await update.message.reply_text(
-                    f"Успешно присоединились к сессии!\n\n"
-                    f"Теперь вы можете писать сообщения.\n"
-                    f"Ваши сообщения будут сохраняться в общем контексте диалога.\n\n"
-                    f"Просто отправьте текстовое сообщение для начала диалога."
+                    f"✅ Успешно присоединились к сессии!\n\n"
+                    f"🤖 AI Медиатор автоматически начал работу.\n"
+                    f"Следуйте инструкциям медиатора для разрешения конфликта.\n\n"
+                    f"Просто отправляйте текстовые сообщения - медиатор будет направлять диалог."
                 )
             else:
                 await update.message.reply_text(
@@ -156,9 +178,9 @@ class TelegramHandlers:
         user_id = user.id
         message_text = update.message.text
         telegram_message_id = update.message.message_id
-        
+
         logger.info(f"Received message from user {user_id}: {message_text[:50]}...")
-        
+
         try:
             # Check if user has active session
             session = await self.session_service.get_user_active_session(user_id)
@@ -169,7 +191,7 @@ class TelegramHandlers:
                     "перейдите по ссылке-приглашению от партнера."
                 )
                 return
-            
+
             # Get user's participant info
             participant = await self.session_service.session_repo.get_participant_by_telegram_id(
                 session.session_id, user_id
@@ -179,49 +201,110 @@ class TelegramHandlers:
                     "Ошибка: не удалось найти информацию об участнике."
                 )
                 return
-            
-            # Process message through AI agent
-            agent_response = await self.message_service.process_user_message(
+
+            # Process message through LangGraph agent
+            result = await self.message_service.resume_user_message(
                 session.session_id,
                 participant.participant_id,
                 telegram_message_id,
                 message_text
             )
-            
-            if agent_response:
-                # Send AI response to user
-                response_text = (
-                    f"🤖 **AI Медиатор:**\n{agent_response.message_to_user}\n\n"
-                    f"📊 **Анализ сессии:**\n{agent_response.session_recommendations or 'Нет дополнительных рекомендаций'}\n\n"
-                    f"📋 **Сессия:** `{session.session_id[:8]}...`"
-                )
-                
-                # Check if session should be ended
-                if agent_response.should_end_session:
-                    response_text += "\n\n⚠️ **Рекомендация:** Рассмотрите возможность завершения сессии."
-                
-                await update.message.reply_text(
-                    response_text,
-                    parse_mode='Markdown'
-                )
-                
-                # If there's a message for partner, handle it here
-                # TODO: Implement partner notification when both users are online
-                if agent_response.message_to_partner:
-                    logger.info(f"Message for partner in session {session.session_id}: {agent_response.message_to_partner}")
-                
+
+            if result:
+                # Deliver outbound messages from agent
+                if result.outbox:
+                    await self._deliver_outbound_messages(session.session_id, result.outbox)
+
+                # Send status update to sender
+                status_msg = f"✅ Сообщение обработано медиатором"
+                if result.phase:
+                    status_msg += f"\n📍 Фаза: {result.phase.value}"
+                if result.pending_for:
+                    status_msg += f"\n⏳ Ожидаем: {result.pending_for.value}"
+
+                await update.message.reply_text(status_msg)
+
             else:
-                # Fallback if agent processing failed
+                # Message was not processed (e.g., wrong turn, duplicate, etc.)
                 await update.message.reply_text(
-                    f"Сообщение получено и сохранено!\n\n"
-                    f"Сессия: `{session.session_id[:8]}...`\n"
-                    f"Статус: {session.status.value}\n\n"
-                    f"⚠️ AI анализ временно недоступен.",
-                    parse_mode='Markdown'
+                    f"📝 Сообщение сохранено.\n\n"
+                    f"Возможно, сейчас не ваша очередь говорить или "
+                    f"сообщение уже было обработано."
                 )
-            
+
+            # Check for pending outbound messages and deliver them
+            await self._check_and_deliver_pending_messages(session.session_id)
+
         except Exception as e:
             logger.error(f"Error handling message: {e}")
             await update.message.reply_text(
                 "Ошибка обработки сообщения. Попробуйте еще раз."
             )
+
+    async def _deliver_outbound_messages(self, session_id: str, outbox: List[OutboundMessage]):
+        """Deliver outbound messages to target participants."""
+        try:
+            for message in outbox:
+                # Get target participants
+                targets = await self.message_service.get_delivery_targets(session_id, message.target)
+
+                delivery_results = {}
+
+                for participant in targets:
+                    try:
+                        # Send message to telegram user
+                        telegram_message = await self._send_message_to_user(
+                            participant.telegram_user_id,
+                            f"🤖 **AI Медиатор:**\n\n{message.content}",
+                            parse_mode='Markdown'
+                        )
+
+                        if telegram_message:
+                            delivery_results[participant.participant_id] = telegram_message.message_id
+                            logger.info(f"Delivered message {message.message_id[:8]}... to user {participant.telegram_user_id}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to deliver message to user {participant.telegram_user_id}: {e}")
+
+                # Mark message as delivered
+                if delivery_results:
+                    await self.message_service.mark_outbound_delivered(message.message_id, delivery_results)
+
+        except Exception as e:
+            logger.error(f"Error delivering outbound messages: {e}")
+
+    async def _check_and_deliver_pending_messages(self, session_id: str):
+        """Check for pending outbound messages and deliver them."""
+        try:
+            pending_messages = await self.message_service.get_pending_outbound_messages(session_id)
+            if pending_messages:
+                logger.info(f"Found {len(pending_messages)} pending messages for session {session_id}")
+                await self._deliver_outbound_messages(session_id, pending_messages)
+        except Exception as e:
+            logger.error(f"Error checking pending messages: {e}")
+
+    async def _send_message_to_user(self, telegram_user_id: int, text: str, **kwargs):
+        """Send message to specific telegram user."""
+        try:
+            if self.bot:
+                # Use actual bot instance to send message
+                message = await self.bot.send_message(
+                    chat_id=telegram_user_id,
+                    text=text,
+                    **kwargs
+                )
+                logger.info(f"Sent message to user {telegram_user_id}: {text[:50]}...")
+                return message
+            else:
+                # Fallback when bot instance is not available
+                logger.warning(f"Bot instance not available, mocking message to user {telegram_user_id}")
+
+                class MockMessage:
+                    def __init__(self):
+                        self.message_id = 12345
+
+                return MockMessage()
+
+        except Exception as e:
+            logger.error(f"Error sending message to user {telegram_user_id}: {e}")
+            return None

@@ -1,9 +1,12 @@
 """Repository interfaces."""
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from ..domain.entities import DialogSession, Participant, InviteLink, SessionMessage, SessionStatus
+from domain.entities import (
+    DialogSession, Participant, InviteLink, SessionMessage, SessionStatus,
+    OutboundMessage, GraphCheckpoint, GraphPhase, PendingTarget
+)
 
 
 class SessionRepositoryInterface(ABC):
@@ -64,4 +67,52 @@ class SessionRepositoryInterface(ABC):
     @abstractmethod
     async def get_participant_by_id(self, participant_id: str) -> Optional[Participant]:
         """Get participant by their ID."""
+        pass
+
+    # LangGraph-specific methods
+    @abstractmethod
+    async def update_session_graph_state(
+        self,
+        session_id: str,
+        thread_id: str,
+        phase: GraphPhase,
+        pending_for: PendingTarget,
+        version: int
+    ) -> None:
+        """Update session graph state."""
+        pass
+
+    @abstractmethod
+    async def save_graph_checkpoint(self, checkpoint: GraphCheckpoint) -> None:
+        """Save graph state checkpoint."""
+        pass
+
+    @abstractmethod
+    async def get_graph_checkpoint(self, thread_id: str) -> Optional[GraphCheckpoint]:
+        """Get latest graph checkpoint for thread."""
+        pass
+
+    @abstractmethod
+    async def save_outbound_message(self, message: OutboundMessage) -> None:
+        """Save outbound message for delivery."""
+        pass
+
+    @abstractmethod
+    async def get_pending_outbound_messages(self, session_id: str) -> List[OutboundMessage]:
+        """Get undelivered outbound messages."""
+        pass
+
+    @abstractmethod
+    async def mark_outbound_delivered(self, message_id: str, telegram_message_ids: Dict[str, int]) -> None:
+        """Mark outbound message as delivered."""
+        pass
+
+    @abstractmethod
+    async def is_message_processed(self, telegram_message_id: int) -> bool:
+        """Check if telegram message was already processed (idempotency)."""
+        pass
+
+    @abstractmethod
+    async def get_session_by_thread_id(self, thread_id: str) -> Optional[DialogSession]:
+        """Get session by LangGraph thread ID."""
         pass
