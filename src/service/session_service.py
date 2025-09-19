@@ -4,8 +4,8 @@ from typing import Optional
 import uuid
 import secrets
 
-from ..domain.entities import DialogSession, Participant, InviteLink, SessionStatus, ParticipantRole
-from ..repository.interface import SessionRepositoryInterface
+from domain.entities import DialogSession, Participant, InviteLink, SessionStatus, ParticipantRole
+from repository.interface import SessionRepositoryInterface
 
 
 class SessionService:

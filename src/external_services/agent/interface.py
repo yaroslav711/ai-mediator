@@ -1,34 +1,62 @@
 """Abstract interface for AI Agent."""
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Literal
 from dataclasses import dataclass
 
-from ...domain.entities import SessionMessage, ConversationContext
+from domain.entities import OutboundMessage, PendingTarget, GraphPhase
 
 
 @dataclass
-class AgentResponse:
-    """Response from AI agent."""
-    pass      # Рекомендация завершить сессию
-
+class AgentResult:
+    """Result from LangGraph agent execution."""
+    outbox: List[OutboundMessage]           # Messages to deliver
+    status: Literal["waiting", "done", "ok"]  # Graph execution status
+    phase: Optional[GraphPhase] = None      # Current graph phase
+    pending_for: Optional[PendingTarget] = None  # Who graph waits for
+    state_snapshot: Optional[dict] = None   # Full graph state for debugging
 
 
 class AgentInterface(ABC):
-    """Abstract interface for AI mediator agent."""
-    
+    """Abstract interface for AI mediator agent with LangGraph support."""
+
     @abstractmethod
-    async def process_message(self, context: ConversationContext) -> AgentResponse:
+    async def start_session(self, thread_id: str, participants: List[str]) -> AgentResult:
         """
-        Process incoming message and generate response.
-        
+        Start new mediation session.
+
         Args:
-            context: Conversation context with message and history
-            
+            thread_id: Unique thread identifier for LangGraph
+            participants: List of participant IDs
+
         Returns:
-            AgentResponse with processed response and recommendations
+            AgentResult with initial outbox and status
         """
         pass
-    
+
+    @abstractmethod
+    async def resume_session(
+        self,
+        thread_id: str,
+        sender: str,
+        message_text: str,
+        current_phase: GraphPhase = None,
+        sender_role: str = None
+    ) -> AgentResult:
+        """
+        Resume session with user input.
+
+        Args:
+            thread_id: Thread to resume
+            sender: Participant ID who sent message
+            message_text: User message content
+            current_phase: Current phase of the session
+            sender_role: Role of the sender (USER_1 or USER_2)
+
+        Returns:
+            AgentResult with response outbox and updated status
+        """
+        pass
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if agent is available and healthy."""

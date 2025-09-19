@@ -2,12 +2,12 @@
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from .config.settings import get_settings
-from .transport.telegram.handlers import TelegramHandlers
-from .service.session_service import SessionService
-from .service.message_service import MessageService
-from .repository.mock_repository import MockSessionRepository
-from .external_services.agent.langgraph_agent import LangGraphAgent
+from config.settings import get_settings
+from transport.telegram.handlers import TelegramHandlers
+from service.session_service import SessionService
+from service.message_service import MessageService
+from repository.mock_repository import MockSessionRepository
+from external_services.agent.langgraph_agent import LangGraphAgent
 
 # Configure logging
 logging.basicConfig(
@@ -41,12 +41,20 @@ def main():
     # Message processing service
     message_service = MessageService(session_repository, agent)
     
-    # Transport layer
-    telegram_handlers = TelegramHandlers(session_service, message_service, settings)
-    
     # Bot setup
     app = Application.builder().token(settings.telegram_bot_token).build()
+
+    # Transport layer (pass bot instance for outbound message delivery)
+    telegram_handlers = TelegramHandlers(session_service, message_service, settings, app.bot)
     
+    # Add error handler
+    async def error_handler(update, context):
+        """Handle errors during bot operation."""
+        logger.error(f"Exception while handling an update: {context.error}")
+        logger.error(f"Update that caused error: {update}")
+
+    app.add_error_handler(error_handler)
+
     # Add handlers
     app.add_handler(CommandHandler("start", telegram_handlers.start_command))
     app.add_handler(CommandHandler("invite", telegram_handlers.invite_command))
