@@ -53,9 +53,7 @@ class ConflictType(Enum):
 class MessageType(Enum):
     """Types of messages in the dialog."""
     USER_TEXT = "user_text"                                  # Обычное сообщение пользователя
-    USER_PROFILE_DATA = "user_profile_data"                  # Ответ на анкету
     USER_CONFLICT_DESCRIPTION = "user_conflict_description"  # Описание конфликта
-    AGENT_PROFILE_QUESTION = "agent_profile_question"        # AI спрашивает анкетные данные
     AGENT_CONFLICT_QUESTION = "agent_conflict_question"      # AI выясняет суть конфликта
     AGENT_CLARIFICATION = "agent_clarification"              # AI уточняющий вопрос
     AGENT_COMPROMISE_PROPOSAL = "agent_compromise_proposal"  # AI предлагает компромисс
@@ -94,12 +92,10 @@ class User:
 class Partnership:
     """Long-term partnership between two users with fixed roles."""
     partnership_id: str                    # Уникальный ID партнерства
-    user1_id: str                          # ID первого пользователя
-    user2_id: str                          # ID второго пользователя
+    user1_id: str                          # ID первого пользователя (кто первый создал связку)
+    user2_id: str                          # ID второго пользователя (кто присоединился)
     status: PartnershipStatus              # Статус партнерства
     created_at: datetime                   # Время создания партнерства
-    last_session_at: Optional[datetime] = None  # Время последней сессии
-    sessions_count: int = 0                # Количество проведенных сессий
 
 
 @dataclass
@@ -119,13 +115,12 @@ class MediationSession:
 @dataclass
 class Message:
     """Message within a mediation session."""
-    message_id: str                        # Уникальный ID сообщения
+    message_id: int                        # Монотонно возрастающий ID
     session_id: str                        # К какой сессии относится
     sender_role: DialogRole                # Роль отправителя (USER_1/USER_2/AGENT)
     telegram_message_id: Optional[int] = None # ID сообщения в Telegram (null для AGENT)
     content: str = ""                      # Текст сообщения
     message_type: Optional[MessageType] = None  # Тип сообщения
-    is_processed: bool = False             # Обработано ли AI медиатором
     timestamp: datetime = field(default_factory=datetime.utcnow) # Время отправки
 
 
@@ -152,7 +147,6 @@ class ConversationContext:
     session_id: str                        # ID сессии
     current_message: Message               # Текущее обрабатываемое сообщение
     conversation_history: List[Message]    # История всех сообщений в сессии
-    participants_count: int = 2            # Количество участников
     
     # Optional LangGraph state fields
     partnership_id: Optional[str] = None   # ID партнерства
