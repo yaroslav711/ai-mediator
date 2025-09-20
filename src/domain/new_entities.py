@@ -11,12 +11,6 @@ import cattrs
 # ENUMS - Business Logic Enumerations
 # ============================================================================
 
-class Gender(Enum):
-    """User gender enumeration."""
-    MALE = "male"                           # Мужской
-    FEMALE = "female"                       # Женский
-
-
 class DialogRole(Enum):
     """Participant role in dialog session."""
     USER_1 = "user_1"  # Первый пользователь (зафиксирован в partnership)
@@ -24,25 +18,14 @@ class DialogRole(Enum):
     AGENT = "agent"    # AI медиатор
 
 
-class MessageType(Enum):
-    USER_TEXT = "user_text"
-    USER_QUESTIONNAIRE = "user_questionnaire"  
-    AGENT_TEXT = "agent_text"
-    AGENT_QUSTIONNAIRE = "agent_questionnaire"
-    SYSTEM = "system"
-
-
 class PartnershipStatus(Enum):
     """Partnership status enumeration."""
-    PENDING = "pending"                     # Один создал сессию, второй еще не присоединился
-    ACTIVE = "active"                       # Оба участвовали в сессии
-    INACTIVE = "inactive"                   # Партнерство закрыто (или долго не используется)
+    ACTIVE = "active"                       # Партнерство активно, можно создавать сессии
+    CLOSED = "closed"                       # Партнерство закрыто, новые сессии не создаются
 
 
 class SessionStatus(Enum):
-    """Enhanced session status enumeration."""
-    WAITING_FOR_PARTNER = "waiting_for_partner"  # Ожидает второго участника
-    COLLECTING_CONTEXT = "collecting_context"    # Собираем контекст конфликта
+    """Session status enumeration."""
     ACTIVE = "active"                            # Активная медиация
     COMPLETED = "completed"                      # Диалог завершен
     EXPIRED = "expired"                          # Сессия истекла
@@ -54,21 +37,47 @@ class SessionStatus(Enum):
 
 @dataclass
 class User:
-    """User entity with profile information."""
+    """User entity with basic profile information.
+    
+    СОЗДАНИЕ:
+    - Создается при первом взаимодействии пользователя с Telegram ботом
+    - user_id генерируется как UUID, telegram_user_id берется из Telegram API
+    
+    ИСПОЛЬЗОВАНИЕ:
+    - Базовая сущность для идентификации пользователей в системе
+    - user_id используется во всех других сущностях как foreign key
+    - Профиль остается простым - только данные из Telegram
+    
+    ЖИЗНЕННЫЙ ЦИКЛ:
+    - Создается один раз при регистрации
+    - Не может обновляться
+    """
     user_id: str                            # Уникальный ID пользователя
     telegram_user_id: int                   # ID пользователя в Telegram
     telegram_username: Optional[str]        # Username в Telegram (может отсутствовать)
-    name: Optional[str] = None              # Имя из анкеты
-    age: Optional[int] = None               # Возраст из анкеты
-    gender: Optional[Gender] = None         # Пол из анкеты
-    profile_completed: bool = False         # Заполнена ли анкета
     created_at: datetime = field(default_factory=datetime.utcnow) # Время регистрации
     updated_at: datetime = field(default_factory=datetime.utcnow) # Время последнего обновления
 
 
 @dataclass
 class Partnership:
-    """Long-term partnership between two users with fixed roles."""
+    """Long-term partnership between two users with fixed roles.
+    
+    СОЗДАНИЕ:
+    - Создается автоматически при успешном переходе user_2 по пригласительной ссылке
+    - Определяет фиксированные роли: user1_id (создатель) и user2_id (присоединившийся)
+    - Создается сразу со статусом ACTIVE
+    
+    ИСПОЛЬЗОВАНИЕ:
+    - Основа для создания медиационных сессий между партнерами
+    - Сохраняет порядок ролей: USER_1 и USER_2 всегда соответствуют user1_id и user2_id
+    - Позволяет отслеживать историю взаимодействий между конкретными пользователями
+    - Может быть закрыта (CLOSED) пользователем или системой
+    
+    ЖИЗНЕННЫЙ ЦИКЛ:
+    - ACTIVE: партнерство активно, можно создавать новые сессии
+    - CLOSED: партнерство закрыто, новые сессии не создаются
+    """
     partnership_id: str                    # Уникальный ID партнерства
     user1_id: str                          # ID первого пользователя (кто первый создал связку)
     user2_id: str                          # ID второго пользователя (кто присоединился)
@@ -78,7 +87,37 @@ class Partnership:
 
 @dataclass
 class MediationSession:
-    """Mediation session between partners."""
+    """Mediation session between partners.
+    
+    СОЗДАНИЕ:
+    - Создается ТОЛЬКО при первом сообщении любого пользователя из Partnership
+    - session_initiator_role определяет, кто начал текущую сессию
+    - Изначально статус ACTIVE
+    
+    ИСПОЛЬЗОВАНИЕ:
+    - Контейнер для всех сообщений и состояния медиационного процесса
+    - Хранит полное состояние LangGraph в поле langgraph_state
+    - Живет 24 часа с момента создания (expires_at)
+    - При входящем сообщении проверяется наличие ACTIVE сессии (если есть - продолжается сессия)
+    - Если нет ACTIVE сессии - создается новая с первым сообщением в langgraph_state
+    - Может быть закрыта досрочно командой в Telegram боте
+    
+    ЖИЗНЕННЫЙ ЦИКЛ:
+    - ACTIVE: идет активная медиация (начальный статус)
+    - COMPLETED: сессия завершена успешно
+    - EXPIRED: сессия истекла по времени (24 часа)
+    
+    LANGGRAPH STATE:
+    - langgraph_state хранит полное состояние AI агента
+    - Обновляется при каждом сообщении в рамках сессии
+    - При создании новой сессии уже содержит первое сообщение
+    - Позволяет сохранять промежуточные состояния для human-in-the-loop
+    
+    ЛОГИКА СОЗДАНИЯ:
+    1. Поступает первое сообщение → создается Message
+    2. Создается MediationSession с langgraph_state, содержащим этот Message
+    3. Последующие сообщения обновляют существующий langgraph_state
+    """
     session_id: str                        # Уникальный ID сессии
     partnership_id: str                    # ID партнерства
     session_initiator_role: DialogRole     # Кто инициировал эту сессию (USER_1 или USER_2)
@@ -87,62 +126,67 @@ class MediationSession:
     updated_at: datetime                   # Время последнего обновления
     expires_at: Optional[datetime] = None  # Время истечения (для автозакрытия)
     completed_at: Optional[datetime] = None # Время завершения
+    # Состояние LangGraph для сохранения контекста AI агента между сообщениями
+    # При создании сессии уже содержит первое сообщение, поэтому НЕ может быть None
+    langgraph_state: Dict[str, Any]
 
 
 @dataclass
 class Message:
-    """Message within a mediation session."""
+    """Message within a mediation session.
+    
+    СОЗДАНИЕ:
+    - Создается при каждом сообщении от пользователя или AI агента
+    - message_id автоинкрементируется в БД для сортировки
+    - sender_role определяется автоматически: USER_1, USER_2 или AGENT
+    - telegram_message_id связывает с конкретным сообщением в Telegram
+    
+    ИСПОЛЬЗОВАНИЕ:
+    - Основная единица диалога в медиационной сессии
+    - Используется для формирования истории диалога в LangGraph состоянии
+    - Позволяет восстановить полную историю диалога
+    - Сохраняется для аналитики и улучшения AI модели
+    
+    ЖИЗНЕННЫЙ ЦИКЛ:
+    - Создается немедленно при получении
+    - Добавляется в langgraph_state сессии для обработки AI агентом
+    - Сохраняется в БД для истории
+    - Остается неизменным после создания (иммутабельный)
+    """
     message_id: int                        # Монотонно возрастающий ID
     session_id: str                        # К какой сессии относится
     sender_role: DialogRole                # Роль отправителя (USER_1/USER_2/AGENT)
     telegram_message_id: Optional[int] = None  # ID сообщения в Telegram
-    message_type: Optional[MessageType] = None # Тип сообщения
     content: str = ""                      # Текст сообщения
     timestamp: datetime = field(default_factory=datetime.utcnow) # Время отправки
 
 
 @dataclass
 class InviteLink:
-    """Enhanced invitation link for joining mediation session."""
+    """Invitation link for creating partnership.
+    
+    СОЗДАНИЕ:
+    - Создается пользователем (user_1) через команду в Telegram боте
+    - invite_code генерируется как уникальная строка для безопасности
+    - Имеет ограниченное время жизни (expires_at)
+    
+    ИСПОЛЬЗОВАНИЕ:
+    - Пересылается user_1 потенциальному партнеру
+    - Партнер переходит по ссылке и становится user_2
+    - При переходе проверяется: не истекла ли ссылка, не использована ли уже
+    - После успешного перехода создается Partnership
+    
+    ЖИЗНЕННЫЙ ЦИКЛ:
+    - Создается: при генерации пользователем через бота
+    - Используется: при переходе второго пользователя (is_used=True)
+    - Истекает: автоматически через заданное время или при использовании
+    - Остается в системе для аудита и статистики
+    """
     invite_code: str                       # Уникальный код приглашения
-    session_id: str                        # К какой сессии приглашение
     created_by_user_id: str                # ID пользователя-создателя (всегда USER_1)
     created_at: datetime                   # Время создания
     expires_at: datetime                   # Время истечения ссылки
     is_used: bool = False                  # Использована ли ссылка
     used_by_user_id: Optional[str] = None  # ID того, кто использовал ссылку (всегда USER_2)
     used_at: Optional[datetime] = None     # Время использования
-
-
-# ============================================================================
-# LANGGRAPH STATE STRUCTURES
-# ============================================================================
-
-# Работа с LangGraph:
-# 1. Загрузка: context.to_dict() → передаем в LangGraph
-# 2. Сохранение: ConversationContext.from_dict(state) → восстанавливаем из LangGraph
-
-@dataclass
-class ConversationContext:
-    """Context for LangGraph agent processing and state management."""
-    session_id: str                        # ID сессии
-    current_message: Message               # Текущее обрабатываемое сообщение
-    conversation_history: List[Message]    # История всех сообщений в сессии
-    
-    # Опциональные поля (можно добавлять по мере надобности)
-    session_status: Optional[SessionStatus] = None  # Текущий статус сессии
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize to dict for LangGraph state."""
-        converter = cattrs.Converter()
-        converter.register_unstructure_hook(datetime, lambda dt: dt.isoformat())
-        return converter.unstructure(self)
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ConversationContext':
-        """Deserialize from LangGraph state dict."""
-        converter = cattrs.Converter()
-        converter.register_structure_hook(datetime, lambda ts, _: 
-            datetime.fromisoformat(ts) if isinstance(ts, str) else ts)
-        return converter.structure(data, cls)
  
