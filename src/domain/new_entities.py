@@ -18,6 +18,14 @@ class DialogRole(Enum):
     AGENT = "agent"    # AI медиатор
 
 
+class MessageType(Enum):
+    """Message type enumeration for different processing logic."""
+    USER_MESSAGE = "user_message"           # Сообщение от пользователя
+    AGENT_MESSAGE = "agent_message"         # Сообщение от AI медиатора
+    AGENT_FINAL = "agent_final"             # Предложение завершить сессию (с кнопкой в Telegram)
+    SYSTEM = "system"                       # Системные уведомления вне сессии (построение пары, ...)
+
+
 class PartnershipStatus(Enum):
     """Partnership status enumeration."""
     ACTIVE = "active"                       # Партнерство активно, можно создавать сессии
@@ -139,6 +147,7 @@ class Message:
     - Создается при каждом сообщении от пользователя или AI агента
     - message_id автоинкрементируется в БД для сортировки
     - sender_role определяется автоматически: USER_1, USER_2 или AGENT
+    - message_type определяет логику обработки сообщения на бэкенде
     - telegram_message_id связывает с конкретным сообщением в Telegram
     
     ИСПОЛЬЗОВАНИЕ:
@@ -146,6 +155,17 @@ class Message:
     - Используется для формирования истории диалога в LangGraph состоянии
     - Позволяет восстановить полную историю диалога
     - Сохраняется для аналитики и улучшения AI модели
+    
+    ТИПЫ СООБЩЕНИЙ:
+    - USER_MESSAGE: сообщение от пользователя
+    - AGENT_MESSAGE: сообщение от AI медиатора в процессе диалога
+    - AGENT_FINAL: предложение от агента завершить сессию (отображается с кнопкой)
+    - SYSTEM: системные уведомления вне сессии (создание партнерства и т.п.)
+    
+    ЛОГИКА ОБРАБОТКИ MESSAGE_TYPE:
+    - AGENT_FINAL может триггерить показ кнопок завершения в Telegram
+    - SYSTEM сообщения не участвуют в медиационном процессе
+    - USER_MESSAGE и AGENT_MESSAGE формируют основной диалог
     
     ЖИЗНЕННЫЙ ЦИКЛ:
     - Создается немедленно при получении
@@ -156,6 +176,7 @@ class Message:
     message_id: int                        # Монотонно возрастающий ID
     session_id: str                        # К какой сессии относится
     sender_role: DialogRole                # Роль отправителя (USER_1/USER_2/AGENT)
+    message_type: MessageType              # Тип сообщения для разной обработки на бэкенде
     telegram_message_id: Optional[int] = None  # ID сообщения в Telegram
     content: str = ""                      # Текст сообщения
     timestamp: datetime = field(default_factory=datetime.utcnow) # Время отправки
